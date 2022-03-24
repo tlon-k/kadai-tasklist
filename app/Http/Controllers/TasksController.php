@@ -15,15 +15,24 @@ class TasksController extends Controller
      */
     public function index()
     {
-        // タスク一覧を取得
-        $tasks = Task::all();
+        $data = [];
+        if (\Auth::check()) { // 認証済みの場合
+            // 認証済みユーザを取得
+            $user = \Auth::user();
+            // ユーザの投稿の一覧を作成日時の降順で取得
+            // このユーザのタスクのみ取得します
+            $tasks = $user->tasks()->orderBy('created_at', 'desc')->paginate(10);
 
-        // タスク一覧ビューでそれを表示
-        return view('tasks.index', [
-            'tasks' => $tasks,
-        ]);
+            $data = [
+                'user' => $user,
+                'tasks' => $tasks,
+            ];
+        }
+
+        // Welcomeビューでそれらを表示
+        return view('welcome', $data);
     }
-
+    
     /**
      * Show the form for creating a new resource.
      *
@@ -52,11 +61,11 @@ class TasksController extends Controller
             'content' => 'required',
             'status' => 'required|max:10',
         ]);
-        // タスクを作成
-        $task = new Task;
-        $task->content = $request->content;
-        $task->status = $request->status;
-        $task->save();
+        // 認証済みユーザ（閲覧者）のタスクとして作成（リクエストされた値をもとに作成）
+        $request->user()->tasks()->create([
+            'content' => $request->content,
+            'status' => $request->status,
+        ]);
 
         // トップページへリダイレクトさせる
         return redirect('/');
@@ -112,10 +121,12 @@ class TasksController extends Controller
         ]);
         // idの値でタスクを検索して取得
         $task = Task::findOrFail($id);
-        // タスクを更新
-        $task->content = $request->content;
-        $task->status = $request->status;
-        $task->save();
+        // 認証済みユーザ（閲覧者）がそのタスクの所有者である場合は、投稿を更新
+        if (\Auth::id() === $task->user_id) {
+            $task->status = $request->status;
+            $task->content = $request->content;
+            $task->save();
+        }
 
         // トップページへリダイレクトさせる
         return redirect('/');
@@ -130,9 +141,12 @@ class TasksController extends Controller
     public function destroy($id)
     {
         // idの値でタスクを検索して取得
-        $task = Task::findOrFail($id);
-        // タスクを削除
-        $task->delete();
+        $task = \App\Task::findOrFail($id);
+
+        // 認証済みユーザ（閲覧者）がそのタスクの所有者である場合は、投稿を削除
+        if (\Auth::id() === $task->user_id) {
+            $task->delete();
+        }
 
         // トップページへリダイレクトさせる
         return redirect('/');
